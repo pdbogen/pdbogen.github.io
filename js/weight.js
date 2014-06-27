@@ -1,6 +1,53 @@
-var data = new Array();
+var rawData = new Array();
+var dailyData = new Array();
+var fiveDayData = new Array();
+var thirtyDayData = new Array();
 var series = new Array();
 var xLabel;
+
+function addDailyData( unixtime, value ) {
+	var d = new Date( unixtime*1000 );
+	d.setHours( 12 );
+	d.setMinutes( 0 );
+	d.setSeconds( 0 );
+	d.setMilliseconds( 0 );
+	if( dailyData[ d.valueOf() ] ) {
+		dailyData[ d.valueOf() ].sum += value;
+		dailyData[ d.valueOf() ].count++;
+	} else {
+		dailyData[ d.valueOf() ] = { sum: value, count: 1 };
+	}
+}
+
+function finishDailyData() {
+	// First pass, calculate daily averages
+	for( var d in dailyData ) {
+		dailyData[d] = dailyData[d].sum / dailyData[d].count;
+	}
+
+	// Second pass, calculate 5- and 30-day moving averages
+	for( var d in dailyData ) {
+		var count = 0;
+		var sum = 0;
+		for( var fd = d - 86400*4*1000; fd <= d; fd += 86400*1000 ) {
+			if( dailyData[ fd ] ) {
+				count++;
+				sum += dailyData[fd];
+			}
+		}
+		fiveDayData.push( { x: Number( d ) / 1000, y: sum/count } );
+
+		count = 0; sum = 0;
+		for( var fd = d - 86400*29*1000; fd <= d; fd += 86400*1000 ) {
+			if( dailyData[fd] ) {
+				count++;
+				sum += dailyData[fd];
+			}
+		}
+		thirtyDayData.push( { x: Number( d ) / 1000, y: sum/count } );
+	}
+}
+
 function loadData( payload ) {
 	var s = "";
 	var cells = payload.feed.entry;
@@ -13,28 +60,30 @@ function loadData( payload ) {
 		var rawValue = new Number( cell[ "gs$cell" ][ "numericValue" ] );
 		var renderValue = cell[ "gs$cell" ][ "$t" ];
 		if( col == 0 ) { // New row, so start a new row in the data table
-			data[ row ] = new Array();
+			rawData[ row ] = new Array();
 		}
 		if( row == 0 ) { // first row, list of labels
-			data[ 0 ][ col ] = renderValue;
+			rawData[ 0 ][ col ] = renderValue;
 		} else {
 			if( col == 0 ) { // special processing for the time field: convert to epoch time
-				data[ row ][ col ] = (rawValue.valueOf() - 25569 + 7/24) * 86400;
-			} else {
-				data[ row ][ col ] = rawValue.valueOf();
+				rawData[ row ][ col ] = (rawValue.valueOf() - 25569 + 7/24) * 86400;
+			} else if( col == 1 ) {
+				rawData[ row ][ col ] = rawValue.valueOf();
+				addDailyData( rawData[ row ][ 0 ], rawData[ row ][ col ] );
 			}
 		}
 	}
-	for( var s = 1; s < data[0].length; s++ ) {
+	finishDailyData();
+	for( var s = 1; s < rawData[0].length; s++ ) {
 		series[s] = {
-			title: data[0][s],
-			data: new Array(),
+			title: rawData[0][s],
+			rawData: new Array(),
 		};
-		for( var i = 1; i < data.length; i++ ) {
-			series[s].data.push( { x: data[i][0], y: data[i][s] } );
+		for( var i = 1; i < rawData.length; i++ ) {
+			series[s].rawData.push( { x: rawData[i][0], y: rawData[i][s] } );
 		}
 	}
-	xLabel = data[0][0];
+	xLabel = rawData[0][0];
 	var palette = new Rickshaw.Color.Palette( { scheme: 'munin' } );
 	var graph = new Rickshaw.Graph( {
 		element: document.querySelector( "#chart" ),
@@ -46,16 +95,16 @@ function loadData( payload ) {
 			name: series[1].title,
 			color: palette.color(),
 			renderer: 'scatterplot',
-			data: series[1].data,
+			data: series[1].rawData,
 		}, {
 			name: series[3].title,
 			color: palette.color(),
-			data: series[3].data,
+			data: fiveDayData,
 			renderer: 'line'
 		}, {
 			name: series[4].title,
 			color: palette.color(),
-			data: series[4].data,
+			data: thirtyDayData,
 			renderer: 'line',
 		} ],
 	});
