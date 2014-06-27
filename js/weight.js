@@ -97,12 +97,12 @@ function loadData( payload ) {
 			renderer: 'scatterplot',
 			data: series[1].rawData,
 		}, {
-			name: series[3].title,
+			name: "5-Day Average",
 			color: palette.color(),
 			data: fiveDayData,
 			renderer: 'line'
 		}, {
-			name: series[4].title,
+			name: "30-Day Average",
 			color: palette.color(),
 			data: thirtyDayData,
 			renderer: 'line',
