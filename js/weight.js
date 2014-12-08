@@ -1,11 +1,12 @@
 var rawData = new Array();
+var dailyNotes = new Array();
 var dailyData = new Array();
 var fiveDayData = new Array();
 var thirtyDayData = new Array();
 var series = new Array();
 var xLabel;
 
-function addDailyData( unixtime, value ) {
+function addDailyData( unixtime, value, note ) {
 	var d = new Date( unixtime*1000 );
 	d.setHours( 12 );
 	d.setMinutes( 0 );
@@ -14,14 +15,33 @@ function addDailyData( unixtime, value ) {
 	if( dailyData[ d.valueOf() ] ) {
 		dailyData[ d.valueOf() ].sum += value;
 		dailyData[ d.valueOf() ].count++;
+		if( note ) {
+			if( dailyData[ d.valueOf() ].note ) {
+				dailyData[ d.valueOf() ].note += "\n" + note;
+			} else {
+				dailyData[ d.valueOf() ].note = note;
+			}
+		}
 	} else {
-		dailyData[ d.valueOf() ] = { sum: value, count: 1 };
+		if( note ) {
+			dailyData[ d.valueOf() ] = { sum: value, count: 1, note: note };
+		} else {
+			dailyData[ d.valueOf() ] = { sum: value, count: 1 };
+		}
 	}
 }
 
 function finishDailyData() {
 	// First pass, calculate daily averages
 	for( var d in dailyData ) {
+		if( dailyData[d].note ) {
+			var day = d / 86400 / 1000;
+			if( dailyNotes[ day ] ) {
+				dailyNotes[ day ] += "\n" + dailyData[d].note;
+			} else {
+				dailyNotes[ day ] = dailyData[d].note;
+			}
+		}
 		dailyData[d] = dailyData[d].sum / dailyData[d].count;
 	}
 
@@ -53,6 +73,7 @@ function loadData( payload ) {
 	var cells = payload.feed.entry;
 	var titleRegex = /^([a-z])([0-9]+)$/i;
 	var x, y;
+	var rows = new Array();
 	for( var i in cells ) {
 		var cell = cells[i];
 		var row = new Number( cell[ "gs$cell" ][ "row" ] ) - 1;
@@ -65,14 +86,23 @@ function loadData( payload ) {
 		if( row == 0 ) { // first row, list of labels
 			rawData[ 0 ][ col ] = renderValue;
 		} else {
+			// Add this to the list of rows to tabulate
+			rows[ row ] = 1;
+
 			if( col == 0 ) { // special processing for the time field: convert to epoch time
 				rawData[ row ][ col ] = (rawValue.valueOf() - 25569 + 7/24) * 86400;
 			} else if( col == 1 ) {
 				rawData[ row ][ col ] = rawValue.valueOf();
-				addDailyData( rawData[ row ][ 0 ], rawData[ row ][ col ] );
+			} else if( col == 5 ) {
+				rawData[ row ][ col ] = cell[ "gs$cell" ][ "inputValue" ];
 			}
 		}
 	}
+
+	for( var row in rows ) {
+		addDailyData( rawData[ row ][ 0 ], rawData[ row ][ 1 ], rawData[ row ][ 5 ] );
+	}
+
 	finishDailyData();
 	for( var s = 1; s < rawData[0].length; s++ ) {
 		series[s] = {
@@ -140,8 +170,21 @@ function loadData( payload ) {
 
 	var preview = new Rickshaw.Graph.RangeSlider( {
 		graph: graph,
-		element: document.getElementById('preview'),
+		element: document.getElementById('preview')
 	} );
 
+
+	var annotator = new Rickshaw.Graph.Annotate( {
+		graph: graph,
+		element: document.getElementById( 'timeline' )
+	} );
+
+	for( var day in dailyNotes ) {
+		if( dailyNotes[ day ] ) {
+			annotator.add( day*86400, dailyNotes[ day ] );
+		}
+	}
+
+	annotator.update();
 	graph.render();
 }
