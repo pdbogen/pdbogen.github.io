@@ -68,7 +68,7 @@ function finishDailyData() {
 	}
 }
 
-var x_axis;
+var slider;
 
 function loadData( payload ) {
 	var s = "";
@@ -140,7 +140,7 @@ function loadData( payload ) {
 			renderer: 'line',
 		} ],
 	});
-	x_axis = new Rickshaw.Graph.Axis.Time( { graph: graph } );
+	var x_axis = new Rickshaw.Graph.Axis.Time( { graph: graph } );
 	var y_axis = new Rickshaw.Graph.Axis.Y( {
 		graph: graph,
 		orientation: 'left',
@@ -170,7 +170,7 @@ function loadData( payload ) {
 		}
 	} );
 
-	var preview = new Rickshaw.Graph.RangeSlider( {
+	slider = new Rickshaw.Graph.RangeSlider( {
 		graph: graph,
 		element: document.getElementById('preview')
 	} );
