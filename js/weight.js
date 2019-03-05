@@ -68,6 +68,8 @@ function finishDailyData() {
 	}
 }
 
+var x_axis;
+
 function loadData( payload ) {
 	var s = "";
 	var cells = payload.feed.entry;
@@ -138,7 +140,7 @@ function loadData( payload ) {
 			renderer: 'line',
 		} ],
 	});
-	var x_axis = new Rickshaw.Graph.Axis.Time( { graph: graph } );
+	x_axis = new Rickshaw.Graph.Axis.Time( { graph: graph } );
 	var y_axis = new Rickshaw.Graph.Axis.Y( {
 		graph: graph,
 		orientation: 'left',
