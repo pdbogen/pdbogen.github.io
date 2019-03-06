@@ -1,97 +1,150 @@
 package main
 
 import (
-	"bytes"
 	"errors"
-	"github.com/ajstarks/svgo/float"
 	"honnef.co/go/js/dom"
+	"math"
 	"strconv"
-	"time"
 )
 
-func Chart(element dom.Element) error {
-	div, ok := element.(*dom.HTMLDivElement)
+const (
+	green = "#055F50"
+	gold  = "#977808"
+	plum  = "#76064C"
+)
+
+func Chart(div *dom.HTMLDivElement) error {
+	svgDomElement := dom.GetWindow().Document().CreateElementNS("http://www.w3.org/2000/svg", "svg")
+	svgElem, ok := svgDomElement.(dom.SVGElement)
 	if !ok {
-		return errors.New("element was not a DIV")
+		return errors.New("created svg is not SVGElement")
 	}
 
-	//domElem := dom.GetWindow().Document().CreateElementNS("http://www.w3.org/2000/svg", "svg")
-	//svgHtml, ok := domElem.(dom.HTMLElement)
-	//if !ok {
-	//	return errors.New("created svg is not HTMLElement")
-	//}
-	//svgElem, ok := domElem.(dom.SVGElement)
-	//if !ok {
-	//	return errors.New("created svg is not SVGElement")
-	//}
-	//
-	//svgHtml.Style().Set("width", "100%")
-	//svgHtml.Style().Set("height", "100%")
-	//svgHtml.Style().Set("border", "1px solid black")
+	svgElem.SetAttribute("width", "100%")
+	svgElem.SetAttribute("height", "100%")
 
-	svgBytes := &bytes.Buffer{}
-	svgobj := svg.New(svgBytes)
-	//svgobj.Startunit(100, 100, "%")
-	ratio := float64(dom.GetWindow().InnerWidth()) / float64(dom.GetWindow().InnerHeight())
-	width := 100 * ratio
-	svgobj.StartviewUnit(100, 100, "%", 0, 0, 100*ratio, 100)
-	svgobj.Rect(1, 1, width-2, 98, "fill: none; stroke: black;")
-	//for _, pt := range ToPoints(Data, width-6, 94) {
-	//	svgobj.Circle(pt.x+3, pt.y+3, 0.5)
-	//}
-	path := &bytes.Buffer{}
-	begin := true
-	for _, pt := range ToPoints(MovingAverage(5), width-6, 94) {
-		if begin {
-			path.WriteRune('M')
-			begin = false
-		} else {
-			path.WriteRune('L')
+	//width := float64(dom.GetWindow().InnerWidth())
+	//height := float64(dom.GetWindow().InnerHeight())
+	width := div.OffsetWidth()
+	height := div.OffsetHeight()
+	svgElem.AppendChild(Fill("white", Rect(0, 0, width, height)))
+
+	svgElem.SetAttribute(
+		"viewBox",
+		"0 0 "+
+			strconv.FormatFloat(width, 'f', 2, 64)+" "+
+			strconv.FormatFloat(height, 'f', 2, 64),
+	)
+	svgElem.SetAttribute("xmlns", "http://www.w3.org/2000/svg")
+
+	//svgElem.AppendChild(Rect(1, 1, width-2, height-2))
+
+	minx, maxx, miny, maxy := Data.Bounds()
+
+	for _, pt := range Data.ToPoints(width-6, height-6, minx, maxx, miny, maxy) {
+		svgElem.AppendChild(Fill(green, Title(pt.Date, Circle(pt.X+3, pt.Y+3, 2))))
+	}
+
+	svgElem.AppendChild(Fill("none", Stroke(gold, Path(
+		Data.
+			MovingAverage(5).
+			DropZeroes().
+			ToPoints(width-6, height-6, minx, maxx, miny, maxy),
+		3, 3))))
+	svgElem.AppendChild(Fill("none", Stroke(plum, Path(
+		Data.
+			MovingAverage(30).
+			DropZeroes().
+			ToPoints(width-6, height-6, minx, maxx, miny, maxy),
+		3, 3))))
+
+	for y := float64(int(miny)); y < maxy; y += math.Floor((maxy - miny) / 12) {
+		//svgElem.AppendChild(TextRight(0, (float64(y + 3) - miny))/(maxy-miny)*height, "label"))
+		scaledY := height - (y-miny)/(maxy-miny)*height
+		svgElem.AppendChild(TextRight(
+			0,
+			scaledY+3,
+			strconv.FormatFloat(y, 'f', 0, 64)))
+		svgElem.AppendChild(Fill("none", Stroke("#C0C0C0", Path(
+			[]Point{
+				{X: 0, Y: scaledY},
+				{X: width, Y: scaledY},
+			}, 3, 3))))
+	}
+
+	cursor := Fill("none", Stroke("#C0C0C0", Path([]Point{}, 0, 0)))
+	cursor.SetID("cursor")
+	svgElem.AppendChild(cursor)
+	cursorText := Text(0, 0, "")
+	cursorText.SetID("cursor-text")
+	svgElem.AppendChild(cursorText)
+
+	div.SetInnerHTML("")
+	div.AppendChild(svgElem)
+
+	svgElem.AddEventListener("mousemove", true, func(event dom.Event) {
+		mev, ok := event.(*dom.MouseEvent)
+		if !ok {
+			println("mouseover event not MouseEvent?")
+			return
 		}
-		path.WriteString(
-			strconv.FormatFloat(pt.x+3, 'f', -1, 64) +
-				" " +
-				strconv.FormatFloat(pt.y+3, 'f', -1, 64) +
-				" ",
+		println(div.OffsetTop())
+		x := mev.Get("pageX").Float() - div.OffsetLeft()
+		dom.GetWindow().Document().GetElementByID("cursor").SetAttribute("d",
+			"M "+strconv.FormatFloat(x, 'f', 2, 64)+" 0"+
+				"L"+strconv.FormatFloat(x, 'f', 2, 64)+" "+
+				strconv.FormatFloat(height, 'f', 2, 64))
+		text := dom.GetWindow().Document().GetElementByID("cursor-text")
+		text.SetAttribute("x", strconv.Itoa(mev.ClientX))
+		text.SetInnerHTML(
+			"ClientX: " + strconv.FormatFloat(x, 'f', 2, 64),
 		)
-	}
-	svgobj.Path(path.String(), "fill: none; stroke: black; stroke-width: 0.1")
-	svgobj.End()
-
-	div.SetInnerHTML(svgBytes.String())
+	})
 
 	return nil
 }
 
-func ToPoints(data map[time.Time]*Node, width float64, height float64) (ret []struct{ x, y float64 }) {
-	dates := Dates(data)
-	if len(dates) > 0 {
-		minDate := dates[0].Unix()
-		maxDate := dates[len(dates)-1].Unix()
-		dateScale := width / float64(maxDate-minDate)
-		minData := -data[dates[0]].Samples[0]
-		maxData := -data[dates[0]].Samples[0]
-		for _, d := range dates {
-			for _, s := range data[d].Samples {
-				s := -s
-				if s < minData {
-					minData = s
-				}
-				if s > maxData {
-					maxData = s
-				}
-			}
+type Point struct {
+	Date           string
+	X, Y, Original float64
+}
+
+// Bounds returns the boundaries; the x axis is represented as unix time, the Y access in the native unit
+func (d DataSet) Bounds() (minX, maxX, minY, maxY float64) {
+	var curMinX, curMaxX int64
+	first := true
+	for date, point := range d {
+		pt := point.Average()
+		if date.Unix() < curMinX || first {
+			curMinX = date.Unix()
 		}
-		dataScale := height / (maxData - minData)
-		for _, d := range dates {
-			for _, s := range data[d].Samples {
-				s := -s
-				ret = append(ret, struct{ x, y float64 }{
-					x: float64(d.Unix()-minDate) * dateScale,
-					y: (s - minData) * dataScale,
+		if date.Unix() > curMaxX || first {
+			curMaxX = date.Unix()
+		}
+		if pt < minY || first {
+			minY = pt
+		}
+		if pt > maxY || first {
+			maxY = pt
+		}
+		first = false
+	}
+	return float64(curMinX), float64(curMaxX), minY, maxY
+}
+
+func (d DataSet) ToPoints(width float64, height float64, minX float64, maxX float64, minY float64, maxY float64) (ret []Point) {
+	dates := d.Dates()
+	if len(dates) > 0 {
+		for _, date := range dates {
+			for _, s := range d[date].Samples {
+				ret = append(ret, Point{
+					Date:     date.Format("2006-01-02"),
+					X:        (float64(date.Unix()) - minX) / (maxX - minX) * width,
+					Y:        height - (s-minY)/(maxY-minY)*height,
+					Original: s,
 				})
 			}
 		}
 	}
-	return
+	return ret
 }

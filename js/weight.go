@@ -117,7 +117,7 @@ func loadData(data map[string]interface{}) {
 }
 
 func updateChart() {
-	Chart(dom.GetWindow().Document().GetElementByID("chart_container"))
+	Chart(dom.GetWindow().Document().GetElementByID("chart_container").(*dom.HTMLDivElement))
 }
 
 func init() {
