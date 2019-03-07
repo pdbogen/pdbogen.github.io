@@ -1,4 +1,4 @@
-//go:generate gopherjs build . -o weight-new.js
+//go:generate gopherjs build -v -m . -o weight-new.js
 
 package main
 
