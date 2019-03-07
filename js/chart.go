@@ -24,14 +24,16 @@ func (c ChartArea) ScaleX(x float64) float64 {
 }
 
 func (c ChartArea) ScaleY(y float64) float64 {
-	return c.Height - c.PaddingBottom - ((y - c.MinY) / (c.MaxY - c.MinY) * (c.Height - c.PaddingTop - c.PaddingBottom))
+	frac := (y - c.MinY) / (c.MaxY - c.MinY)
+	scaled := (1 - frac) * (c.Height - c.PaddingTop - c.PaddingBottom)
+	return c.PaddingTop + scaled
 }
 
 func Chart(div *dom.HTMLDivElement) error {
 	area := ChartArea{
 		Width:         div.OffsetWidth(),
 		Height:        div.OffsetHeight() - 4,
-		PaddingTop:    10,
+		PaddingTop:    20,
 		PaddingBottom: 80,
 		PaddingLeft:   40,
 		PaddingRight:  0,
@@ -173,7 +175,7 @@ func addCursor(svgElem dom.SVGElement, area ChartArea) {
 	)))
 	cursor.SetID("cursor")
 	svgElem.AppendChild(cursor)
-	cursorText := Text(0, 0, "")
+	cursorText := Text(0, area.PaddingTop, "")
 	cursorText.SetID("cursor-text")
 	cursorText.SetAttribute("dy", "1em")
 	svgElem.AppendChild(cursorText)

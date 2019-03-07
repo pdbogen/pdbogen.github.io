@@ -120,21 +120,26 @@ func (d *DataSet) DropZeroes() *DataSet {
 }
 
 func (d *DataSet) ValueAt(t time.Time) float64 {
-	t = t.Truncate(time.Hour * 24)
+	if d.valueAt == nil {
+		d.valueAt = map[time.Time]float64{}
+	}
+
+	//t = t.Truncate(time.Hour * 24)
 	if v, ok := d.valueAt[t]; ok {
 		return v
 	}
-	dates := d.Dates()
-	lastBefore := dates[0]
-	firstAfter := dates[len(dates)-1]
-	for _, d := range dates {
-		if d.Before(t) && d.After(lastBefore) {
-			lastBefore = d
-		}
-		if d.After(t) && d.Before(firstAfter) {
-			firstAfter = d
-		}
+
+	if v, ok := d.Nodes[t]; ok {
+		d.valueAt[t] = v.Average()
+		return d.valueAt[t]
 	}
+
+	dates := d.Dates()
+	firstAfterIdx := sort.Search(len(dates), func(i int) bool {
+		return dates[i].After(t)
+	})
+	lastBefore := dates[firstAfterIdx-1]
+	firstAfter := dates[firstAfterIdx]
 	v1 := d.Nodes[lastBefore].Average()
 	v2 := d.Nodes[firstAfter].Average()
 	span := float64(firstAfter.Sub(lastBefore))
