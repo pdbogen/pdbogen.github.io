@@ -9,10 +9,10 @@ div.container {
 #chart_container {
     flex: auto;
     font-family: Arial, Helvetica, sans-serif;
-    /*width: 100%;*/
 }
 
 div.timenav {
-    flex: none;
+    flex: 0 0 1em;
+    min-height: 1em;
     text-align: center;
 }

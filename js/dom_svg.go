@@ -95,3 +95,12 @@ func TextRight(x float64, y float64, text string) dom.SVGElement {
 	textElem.SetAttribute("text-anchor", "end")
 	return textElem
 }
+
+func Tspan(text string) dom.SVGElement {
+	tspanElem, ok := dom.GetWindow().Document().CreateElementNS("http://www.w3.org/2000/svg", "tspan").(dom.SVGElement)
+	if !ok {
+		panic("document.CreateElement(tspan) did not return dom.SVGElement")
+	}
+	tspanElem.SetTextContent(text)
+	return tspanElem
+}

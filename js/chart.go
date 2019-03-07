@@ -28,30 +28,35 @@ func (c ChartArea) ScaleY(y float64) float64 {
 }
 
 func Chart(div *dom.HTMLDivElement) error {
-	svgDomElement := dom.GetWindow().Document().CreateElementNS("http://www.w3.org/2000/svg", "svg")
-	svgElem, ok := svgDomElement.(dom.SVGElement)
-	if !ok {
-		return errors.New("created svg is not SVGElement")
-	}
-
-	//svgElem.SetAttribute("width", "99%")
-	//svgElem.SetAttribute("height", "99%")
 	area := ChartArea{
 		Width:         div.OffsetWidth(),
-		Height:        div.OffsetHeight(),
-		PaddingTop:    0,
+		Height:        div.OffsetHeight() - 4,
+		PaddingTop:    10,
 		PaddingBottom: 80,
 		PaddingLeft:   40,
 		PaddingRight:  0,
 	}
 
-	svgElem.SetAttribute(
+	svgDomElement := dom.GetWindow().Document().GetElementByID("svg")
+	if svgDomElement == nil {
+		svgDomElement = dom.GetWindow().Document().CreateElementNS("http://www.w3.org/2000/svg", "svg")
+		svgDomElement.SetID("svg")
+		div.AppendChild(svgDomElement)
+	}
+	for _, node := range svgDomElement.ChildNodes() {
+		svgDomElement.RemoveChild(node)
+	}
+	svgElem, ok := svgDomElement.(dom.SVGElement)
+	if !ok {
+		return errors.New("created svg is not SVGElement")
+	}
+
+	svgDomElement.(dom.SVGElement).SetAttribute(
 		"viewBox",
 		"0 0 "+
 			strconv.FormatFloat(area.Width, 'f', 2, 64)+" "+
 			strconv.FormatFloat(area.Height, 'f', 2, 64),
 	)
-	svgElem.SetAttribute("xmlns", "http://www.w3.org/2000/svg")
 
 	daysStr := dom.GetWindow().Location().Hash
 	if len(daysStr) > 0 && daysStr[0] == '#' {
@@ -81,26 +86,33 @@ func Chart(div *dom.HTMLDivElement) error {
 
 	area.MinX, area.MaxX, area.MinY, area.MaxY = data.Bounds()
 
+	gridLines(svgElem, area, data)
+
 	println("adding dots")
 	for _, pt := range data.ToPoints(area) {
 		svgElem.AppendChild(Fill(green, Title(pt.Date, Circle(pt.X, pt.Y, 2))))
 	}
 
 	fiveday := data.MovingAverage(5).DropZeroes()
-	println(len(fiveday.Nodes), "points in five-day")
-	svgElem.AppendChild(Fill("none", Stroke(gold, Path(
-		data.
-			MovingAverage(5).
-			DropZeroes().
-			ToPoints(area), 0, 0))))
-	svgElem.AppendChild(Fill("none", Stroke(plum, Path(
-		data.
-			MovingAverage(30).
-			DropZeroes().
-			ToPoints(area), 0, 0))))
+	thirtyday := data.MovingAverage(30).DropZeroes()
+	svgElem.AppendChild(Fill("none", Stroke(gold, Path(fiveday.ToPoints(area), 0, 0))))
+	svgElem.AppendChild(Fill("none", Stroke(plum, Path(thirtyday.ToPoints(area), 0, 0))))
 
-	println("drawing weight lines")
-	for y := area.MinY; y <= area.MaxY; y += (area.MaxY - area.MinY) / 12 {
+	addCursor(svgElem, area)
+
+	svgElem.AddEventListener("mousemove", true, updateCursor(div, area, fiveday, thirtyday))
+
+	return nil
+}
+
+func gridLines(svgElem dom.SVGElement, area ChartArea, data *DataSet) {
+	dates := data.Dates()
+	begin := dates[0]
+	end := dates[len(dates)-1]
+	days := end.Sub(begin).Hours() / 24
+
+	for yIdx := 0; yIdx < 12; yIdx++ {
+		y := area.MinY + (area.MaxY-area.MinY)*float64(yIdx)/12
 		label := Text(
 			0,
 			area.ScaleY(y),
@@ -115,9 +127,6 @@ func Chart(div *dom.HTMLDivElement) error {
 		))))
 	}
 
-	println("drawing date lines")
-	begin := dates[0]
-	end := dates[len(dates)-1]
 	x := time.Date(begin.Year(), begin.Month(), 1, 0, 0, 0, 0, begin.Location())
 	for {
 		if x.After(end) {
@@ -155,8 +164,9 @@ func Chart(div *dom.HTMLDivElement) error {
 			x = time.Date(x.Year(), x.Month(), x.Day()+1, 0, 0, 0, 0, x.Location())
 		}
 	}
-	println("done with all that")
+}
 
+func addCursor(svgElem dom.SVGElement, area ChartArea) {
 	cursor := Fill("none", Stroke("#C0C0C0", Line(
 		0, area.PaddingTop,
 		0, area.Height-area.PaddingBottom,
@@ -168,16 +178,21 @@ func Chart(div *dom.HTMLDivElement) error {
 	cursorText.SetAttribute("dy", "1em")
 	svgElem.AppendChild(cursorText)
 
-	div.SetInnerHTML("")
-	div.AppendChild(svgElem)
+	fiveDot := Fill(gold, Stroke("none", Circle(0, 0, 4)))
+	fiveDot.SetID("fivedot")
+	svgElem.AppendChild(fiveDot)
 
-	svgElem.AddEventListener("mousemove", true, updateCursor(div, area, data))
+	thirtyDot := Fill(plum, Stroke("none", Circle(0, 0, 4)))
+	thirtyDot.SetID("thirtydot")
+	svgElem.AppendChild(thirtyDot)
 
-	return nil
 }
 
-func updateCursor(div *dom.HTMLDivElement, area ChartArea, d *DataSet) func(event dom.Event) {
+func updateCursor(div *dom.HTMLDivElement, area ChartArea, fiveday *DataSet, thirtyday *DataSet) func(event dom.Event) {
 	return func(event dom.Event) {
+		fivedot := dom.GetWindow().Document().GetElementByID("fivedot")
+		thirtydot := dom.GetWindow().Document().GetElementByID("thirtydot")
+
 		mev, ok := event.(*dom.MouseEvent)
 		if !ok {
 			println("mouseover event not MouseEvent?")
@@ -197,20 +212,35 @@ func updateCursor(div *dom.HTMLDivElement, area ChartArea, d *DataSet) func(even
 		cursor.SetAttribute("x1", xcoord)
 		cursor.SetAttribute("x2", xcoord)
 		date := time.Unix(int64(dateUnix), 0)
-		text := dom.GetWindow().Document().GetElementByID("cursor-text")
+		text := dom.GetWindow().Document().GetElementByID("cursor-text").(dom.SVGElement)
 		if x/area.Width > 0.75 {
-			text.(dom.SVGElement).SetAttribute("text-anchor", "end")
-			text.(dom.SVGElement).SetAttribute("dx", "-1em")
+			text.SetAttribute("text-anchor", "end")
+			text.SetAttribute("dx", "-1em")
 		}
 		if x/area.Width < 0.25 {
-			text.(dom.SVGElement).SetAttribute("text-anchor", "beginning")
-			text.(dom.SVGElement).SetAttribute("dx", "0")
+			text.SetAttribute("text-anchor", "beginning")
+			text.SetAttribute("dx", "0")
 		}
+		fivedot.SetAttribute("cx", xcoord)
+		fivedot.SetAttribute("cy", strconv.FormatFloat(area.ScaleY(fiveday.ValueAt(date)), 'f', 2, 64))
+		thirtydot.SetAttribute("cx", xcoord)
+		thirtydot.SetAttribute("cy", strconv.FormatFloat(area.ScaleY(thirtyday.ValueAt(date)), 'f', 2, 64))
 		text.SetAttribute("x", xcoord)
-		text.SetInnerHTML(
-			date.Format("2006-01-02") + "\n" +
-				strconv.FormatFloat(d.ValueAt(date), 'f', 2, 64),
-		)
+
+		for _, e := range text.GetElementsByTagName("tspan") {
+			text.RemoveChild(e)
+		}
+
+		text.AppendChild(Tspan(date.Format("2006-01-02")))
+		fivespan := Tspan("5-Day: " + strconv.FormatFloat(fiveday.ValueAt(date), 'f', 2, 64))
+		fivespan.SetAttribute("x", xcoord)
+		fivespan.SetAttribute("dy", "1em")
+		text.AppendChild(fivespan)
+
+		thirtyspan := Tspan("30-Day: " + strconv.FormatFloat(thirtyday.ValueAt(date), 'f', 2, 64))
+		thirtyspan.SetAttribute("x", xcoord)
+		thirtyspan.SetAttribute("dy", "1em")
+		text.AppendChild(thirtyspan)
 	}
 }
 
