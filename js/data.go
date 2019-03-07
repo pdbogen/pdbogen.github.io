@@ -5,7 +5,11 @@ import (
 	"time"
 )
 
-type DataSet map[time.Time]*Node
+type DataSet struct {
+	Nodes   map[time.Time]*Node
+	dates   []time.Time
+	valueAt map[time.Time]float64
+}
 
 var Data = DataSet{}
 
@@ -16,16 +20,23 @@ type Node struct {
 
 func (n Node) ToPoint() {}
 
-func (d DataSet) Dates() (ret []time.Time) {
-	ret = make([]time.Time, len(d))
+func (d *DataSet) Dates() (ret []time.Time) {
+	if d.dates != nil {
+		if len(d.Nodes) != len(d.dates) {
+			panic("non-nil but mismatched dates")
+		}
+		return d.dates
+	}
+	ret = make([]time.Time, len(d.Nodes))
 	i := 0
-	for k := range d {
+	for k := range d.Nodes {
 		ret[i] = k
 		i += 1
 	}
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].Before(ret[j])
 	})
+	d.dates = ret
 	return
 }
 
@@ -36,12 +47,16 @@ func (n Node) Average() (ret float64) {
 	return
 }
 
-func (d DataSet) nodeFor(date time.Time) *Node {
+func (d *DataSet) nodeFor(date time.Time) *Node {
 	t := date.Truncate(time.Hour * 24)
-	node, ok := d[t]
+	node, ok := d.Nodes[t]
 	if !ok {
 		node = &Node{}
-		d[t] = node
+		if d.Nodes == nil {
+			d.Nodes = map[time.Time]*Node{}
+		}
+		d.Nodes[t] = node
+		d.dates = nil
 	}
 	return node
 }
@@ -57,43 +72,77 @@ func addAnnotation(date time.Time, annotation string) {
 	day.Annotations = append(day.Annotations, annotation)
 }
 
-func (d DataSet) MovingAverage(days int) (ret DataSet) {
+func (d *DataSet) MovingAverage(days int) *DataSet {
 	dates := d.Dates()
 	begin := dates[0]
 	end := dates[len(dates)-1]
-	ret = DataSet{}
-	for date := begin.Add(time.Hour * 24); date.Before(end.Add(time.Hour * 24)); date = date.Add(time.Hour * 24) {
-		ret[date] = &Node{}
-		for i := -time.Duration(days) * time.Hour * 24; i <= 0; i += time.Hour * 24 {
-			if data, ok := d[date.Add(i)]; ok {
-				ret[date].Samples = append(ret[date].Samples, data.Average())
+	ret := &DataSet{Nodes: map[time.Time]*Node{}}
+	for date := begin; date.Before(end.Add(time.Hour * 24)); date = date.Add(time.Hour * 24) {
+		ret.Nodes[date] = &Node{}
+		for i := -days + 1; i <= 0; i++ {
+			if data, ok := d.Nodes[date.Add(time.Duration(i)*time.Hour*24)]; ok {
+				ret.Nodes[date].Samples = append(ret.Nodes[date].Samples, data.Average())
 			}
 		}
-		ret[date].Samples = []float64{ret[date].Average()}
+		ret.Nodes[date].Samples = []float64{ret.Nodes[date].Average()}
 	}
-	return
-}
-
-func (d DataSet) Last(duration time.Duration) DataSet {
-	ret := DataSet{}
-	today := time.Now().Truncate(time.Hour * 24)
-	for date := today.Add(-1 * duration).Truncate(time.Hour * 24); date.Before(today.Add(time.Hour * 24)); date = date.Add(time.Hour * 24) {
-		if node, ok := d[date]; ok {
-			ret[date] = node
-		}
-	}
+	_ = ret.Dates()
 	return ret
 }
 
-func (d DataSet) DropZeroes() DataSet {
-dates:
-	for date, node := range d {
+func (d *DataSet) Last(duration time.Duration) *DataSet {
+	ret := &DataSet{Nodes: map[time.Time]*Node{}}
+	today := time.Now().Truncate(time.Hour * 24)
+	for date := today.Add(-1 * duration).Truncate(time.Hour * 24); date.Before(today.Add(time.Hour * 24)); date = date.Add(time.Hour * 24) {
+		if node, ok := d.Nodes[date]; ok {
+			ret.Nodes[date] = node
+		}
+	}
+	_ = ret.Dates()
+	return ret
+}
+
+func (d *DataSet) DropZeroes() *DataSet {
+	ret := &DataSet{Nodes: map[time.Time]*Node{}}
+	for date, node := range d.Nodes {
+		zero := true
 		for _, s := range node.Samples {
 			if s != 0 {
-				continue dates
+				zero = false
 			}
 		}
-		delete(d, date)
+		if !zero {
+			ret.Nodes[date] = node
+		}
 	}
-	return d
+	_ = ret.dates
+	return ret
+}
+
+func (d *DataSet) ValueAt(t time.Time) float64 {
+	t = t.Truncate(time.Hour * 24)
+	if v, ok := d.valueAt[t]; ok {
+		return v
+	}
+	dates := d.Dates()
+	lastBefore := dates[0]
+	firstAfter := dates[len(dates)-1]
+	for _, d := range dates {
+		if d.Before(t) && d.After(lastBefore) {
+			lastBefore = d
+		}
+		if d.After(t) && d.Before(firstAfter) {
+			firstAfter = d
+		}
+	}
+	v1 := d.Nodes[lastBefore].Average()
+	v2 := d.Nodes[firstAfter].Average()
+	span := float64(firstAfter.Sub(lastBefore))
+	delta := float64(t.Sub(lastBefore))
+	ret := delta/span*v2 + (span-delta)/span*v1
+	if d.valueAt == nil {
+		d.valueAt = map[time.Time]float64{}
+	}
+	d.valueAt[t] = ret
+	return ret
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/gopherjs/gopherjs/js"
 	"honnef.co/go/js/dom"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -116,7 +117,11 @@ func loadData(data map[string]interface{}) {
 	}
 }
 
+var chartMu sync.Mutex
+
 func updateChart() {
+	chartMu.Lock()
+	defer chartMu.Unlock()
 	Chart(dom.GetWindow().Document().GetElementByID("chart_container").(*dom.HTMLDivElement))
 }
 
@@ -125,6 +130,11 @@ func init() {
 }
 
 func main() {
+	dom.GetWindow().AddEventListener("hashchange", false, func(dom.Event) {
+		go func() {
+			updateChart()
+		}()
+	})
 	dom.GetWindow().Document().AddEventListener("DOMContentLoaded", false, func(event dom.Event) {
 		go func() {
 			updateChart()

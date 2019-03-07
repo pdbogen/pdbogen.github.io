@@ -45,6 +45,18 @@ func Circle(cx float64, cy float64, r float64) (dom.SVGElement) {
 	return circle
 }
 
+func Line(x1, y1, x2, y2 float64) (dom.SVGElement) {
+	line, ok := dom.GetWindow().Document().CreateElementNS("http://www.w3.org/2000/svg", "line").(dom.SVGElement)
+	if !ok {
+		panic("document.CreateElement(line) did not return dom.SVGElement")
+	}
+	line.SetAttribute("x1", strconv.FormatFloat(x1, 'f', 2, 64))
+	line.SetAttribute("y1", strconv.FormatFloat(y1, 'f', 2, 64))
+	line.SetAttribute("x2", strconv.FormatFloat(x2, 'f', 2, 64))
+	line.SetAttribute("y2", strconv.FormatFloat(y2, 'f', 2, 64))
+	return line
+}
+
 func Path(pts []Point, shiftX float64, shiftY float64) (dom.SVGElement) {
 	var cmd string
 	for _, pt := range pts {
@@ -63,7 +75,7 @@ func Path(pts []Point, shiftX float64, shiftY float64) (dom.SVGElement) {
 		panic("document.CreateElement(path) did not return dom.SVGElement")
 	}
 	path.SetAttribute("d", cmd)
-	path.SetAttribute("style", "stroke-width: 1px;")
+	path.SetAttribute("style", "stroke-width: 1px; stroke-linejoin: round;")
 	return path
 }
 
@@ -74,7 +86,6 @@ func Text(x float64, y float64, text string) dom.SVGElement {
 	}
 	textElem.SetAttribute("x", strconv.FormatFloat(x, 'f', 2, 64))
 	textElem.SetAttribute("y", strconv.FormatFloat(y, 'f', 2, 64))
-	textElem.SetAttribute("dy", "1em")
 	textElem.SetInnerHTML(text)
 	return textElem
 }
