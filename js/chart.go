@@ -36,7 +36,7 @@ func Chart(div *dom.HTMLDivElement) error {
 		PaddingTop:    20,
 		PaddingBottom: 80,
 		PaddingLeft:   40,
-		PaddingRight:  0,
+		PaddingRight:  40,
 	}
 
 	svgDomElement := dom.GetWindow().Document().GetElementByID("svg")
